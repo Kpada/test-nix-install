@@ -29,23 +29,31 @@ if [[ -e /nix || -L /nix ]]; then
     exit 1
   }
 fi
-work="$(mktemp -d)"
-trap 'rm -rf -- "$work"' EXIT
-archive="$work/nix.tar.zst"
-case "$source_archive" in
-  https://*)
-    if [[ -n "${GH_TOKEN:-}" && "$source_archive" =~ ^https://github\.com/([^/]+/[^/]+)/releases/download/([^/]+)/([^/]+)$ ]]; then
-      gh release download "${BASH_REMATCH[2]}" --repo "${BASH_REMATCH[1]}" \
-        --pattern "${BASH_REMATCH[3]}" --output "$archive"
-    else
-      curl --fail --location --retry 3 --connect-timeout 20 \
-        "$source_archive" --output "$archive"
-    fi
-    ;;
-  *://*) echo "Expected an HTTPS URL or a local file" >&2; exit 2 ;;
-  *) cp -- "$source_archive" "$archive" ;;
-esac
+download_archive() {
+  case "$source_archive" in
+    https://*)
+      if [[ -n "${GH_TOKEN:-}" && "$source_archive" =~ ^https://github\.com/([^/]+/[^/]+)/releases/download/([^/]+)/([^/]+)$ ]]; then
+        gh release download "${BASH_REMATCH[2]}" --repo "${BASH_REMATCH[1]}" \
+          --pattern "${BASH_REMATCH[3]}" --output -
+      else
+        curl --silent --show-error --fail --location --retry 3 --connect-timeout 20 \
+          "$source_archive"
+      fi
+      ;;
+    *://*) echo "Expected an HTTPS URL or a local file" >&2; return 2 ;;
+    *) cat -- "$source_archive" ;;
+  esac
+}
+extract_archive() {
+  tar --extract --use-compress-program=unzstd --no-same-owner --delay-directory-restore \
+    --strip-components=1 --file "$1" --directory /nix
+}
+
 if [[ -n "$expected_sha" ]]; then
+  work="$(mktemp -d)"
+  trap 'rm -rf -- "$work"' EXIT
+  archive="$work/nix.tar.zst"
+  download_archive > "$archive"
   printf '%s  %s\n' "$expected_sha" "$archive" | sha256sum --check --status
 fi
 
@@ -56,8 +64,11 @@ if [[ ! -d /nix ]]; then
     sudo install -d -m 0755 -o "$(id -un)" -g "$(id -gn)" /nix
   fi
 fi
-tar --extract --use-compress-program=unzstd --no-same-owner --delay-directory-restore \
-  --strip-components=1 --file "$archive" --directory /nix
+if [[ -n "$expected_sha" ]]; then
+  extract_archive "$archive"
+else
+  download_archive | extract_archive -
+fi
 metadata=/nix/var/quick-nix
 [[ "$(cat "$metadata/platform")" == "$platform" ]] || {
   echo "Archive platform does not match this runner" >&2; exit 1;

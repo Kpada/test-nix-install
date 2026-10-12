@@ -1,5 +1,6 @@
 name: Test Nix installation
 on:
+  push:
   workflow_dispatch:
     inputs:
       nix_version:
@@ -14,6 +15,9 @@ on:
         type: string
 permissions:
   contents: read
+env:
+  NIX_VERSION: ${{ inputs.nix_version || '2.34.7' }}
+  RELEASE_TAG: ${{ inputs.release_tag || 'nix-2.34.7-r1' }}
 jobs:
   test:
     name: Install and test Nix (${{ matrix.platform }})
@@ -31,7 +35,6 @@ jobs:
       run:
         shell: bash
     env:
-      NIX_VERSION: ${{ inputs.nix_version }}
       NIX_PLATFORM: ${{ matrix.platform }}
     steps:
       - name: Check out the action under test
@@ -52,6 +55,8 @@ jobs:
       #     with open(os.environ["GITHUB_OUTPUT"], "a") as out:
       #         out.write(f"sha256={manifest['sha256']}\n")
       #     PY
+      - name: Start installation timer
+        run: printf 'INSTALL_STARTED_NS=%s\n' "$(date +%s%N)" >> "$GITHUB_ENV"
       - name: Install Nix using our action
         uses: ./install
         env:
@@ -59,10 +64,16 @@ jobs:
         with:
           archive-url:
             ${{ github.server_url }}/${{ github.repository
-            }}/releases/download/${{ inputs.release_tag }}/nix-${{
-            inputs.nix_version }}-${{ matrix.platform }}.tar.zst
+            }}/releases/download/${{ env.RELEASE_TAG }}/nix-${{
+            env.NIX_VERSION }}-${{ matrix.platform }}.tar.zst
           nix-conf: |
             sandbox = false
+      - name: Record installation time
+        run: |
+          elapsed_ms=$(( ($(date +%s%N) - INSTALL_STARTED_NS) / 1000000 ))
+          printf 'Our action: download + installation took %s ms\n' "$elapsed_ms"
+          printf '| Action | Download + installation |\n| --- | ---: |\n| Our action | %s ms |\n\n' \
+            "$elapsed_ms" >> "$GITHUB_STEP_SUMMARY"
       - name: Verify Nix in a subsequent step
         run: |
           command -v nix
@@ -103,21 +114,28 @@ jobs:
       run:
         shell: bash
     env:
-      NIX_VERSION: ${{ inputs.nix_version }}
       NIX_PLATFORM: ${{ matrix.platform }}
       # Upstream uses the local store by default but does not export NIX_REMOTE.
       NIX_REMOTE: local
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Start installation timer
+        run: printf 'INSTALL_STARTED_NS=%s\n' "$(date +%s%N)" >> "$GITHUB_ENV"
       - name: Install Nix using nixbuild's action
         uses: nixbuild/nix-quick-install-action@9f63be77f412a248c9d9a65a4c82cf066cdf8f0c # v35
         with:
-          nix_version: ${{ inputs.nix_version }}
+          nix_version: ${{ env.NIX_VERSION }}
           enable_kvm: false
           nix_conf: |
             build-users-group =
             sandbox = false
+      - name: Record installation time
+        run: |
+          elapsed_ms=$(( ($(date +%s%N) - INSTALL_STARTED_NS) / 1000000 ))
+          printf 'nixbuild: download + installation took %s ms\n' "$elapsed_ms"
+          printf '| Action | Download + installation |\n| --- | ---: |\n| nixbuild | %s ms |\n\n' \
+            "$elapsed_ms" >> "$GITHUB_STEP_SUMMARY"
       - name: Verify Nix in a subsequent step
         run: |
           command -v nix
