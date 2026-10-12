@@ -59,8 +59,6 @@ jobs:
         run: printf 'INSTALL_STARTED_NS=%s\n' "$(date +%s%N)" >> "$GITHUB_ENV"
       - name: Install Nix using our action
         uses: ./install
-        env:
-          GH_TOKEN: ${{ github.token }}
         with:
           archive-url:
             ${{ github.server_url }}/${{ github.repository
