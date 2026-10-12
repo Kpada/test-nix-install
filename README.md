@@ -8,6 +8,7 @@ does not compile Nix from source.
 - `install/action.yml`: install one checksum-pinned archive.
 - `install.sh`: the same installer, usable directly.
 - `.github/workflows/prepare.yml`: manually package and publish both Linux architectures.
+- `.github/workflows/test.yml`: manually smoke-test installation on both Linux architectures.
 - `sources.json`: reviewed upstream checksums (initial version: 2.34.7).
 
 Supported installation target: a **fresh GitHub-hosted Linux runner**, x86_64 or
@@ -15,6 +16,23 @@ aarch64. Single-user installation, no daemon, channels, NIX_PATH or shell-profil
 edits. Uses the runner's system CA bundle. Requires Bash, GNU tar, zstd/unzstd,
 curl, xz and Python 3 for packaging; installation does not need Python.
 Standard Ubuntu runners provide these tools.
+
+## Test the installer manually
+
+In Actions, select **Test Nix installation**, click **Run workflow**, and keep
+`nix_version` set to `2.34.7` (or choose another version pinned in `sources.json`).
+The workflow runs on `ubuntu-24.04` (x86_64) and `ubuntu-24.04-arm` (aarch64).
+It prepares a local archive with the root action, then installs it using
+`./install` from the selected workflow ref. No archive release is needed.
+
+Subsequent steps check the exact Nix version and platform, PATH and environment
+propagation, store integrity, expression evaluation, and an offline derivation.
+The test also passes `sandbox = false` through the installer's `nix-conf` input
+so the derivation can use the runner's `/bin/sh`. Each job writes its results
+to the Actions summary.
+
+Commit the workflow to the repository's default branch first so GitHub enables
+the [manual trigger](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatch).
 
 ## 1. Create your archive release
 

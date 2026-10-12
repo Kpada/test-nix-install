@@ -1,0 +1,139 @@
+name: Test Nix installation
+on:
+  workflow_dispatch:
+    inputs:
+      nix_version:
+        description: Exact version already recorded in sources.json.
+        required: true
+        default: "2.34.7"
+        type: string
+permissions:
+  contents: read
+jobs:
+  test:
+    name: Install and test Nix (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: x86_64-linux
+          # - runner: ubuntu-24.04-arm
+          #   platform: aarch64-linux
+    defaults:
+      run:
+        shell: bash
+    env:
+      NIX_VERSION: ${{ inputs.nix_version }}
+      NIX_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - name: Check out the action under test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Read pinned upstream checksum
+        id: source
+        run: |
+          python3 - <<'PY'
+          import json, os
+          with open("sources.json") as source_file:
+              sources = json.load(source_file)
+          version, platform = os.environ["NIX_VERSION"], os.environ["NIX_PLATFORM"]
+          if version not in sources or platform not in sources[version]:
+              raise SystemExit(f"No pinned checksum for Nix {version} on {platform} in sources.json")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"sha256={sources[version][platform]}\n")
+          PY
+      - name: Prepare the test archive
+        id: archive
+        uses: ./
+        with:
+          nix-version: ${{ inputs.nix_version }}
+          platform: ${{ matrix.platform }}
+          source-sha256: ${{ steps.source.outputs.sha256 }}
+      - name: Install Nix using our action
+        uses: ./install
+        with:
+          archive-url: ${{ steps.archive.outputs.archive }}
+          archive-sha256: ${{ steps.archive.outputs.sha256 }}
+          nix-conf: |
+            sandbox = false
+      - name: Verify Nix in a subsequent step
+        run: |
+          command -v nix
+          nix --version
+          test "$(nix eval --raw --expr builtins.nixVersion)" = "$NIX_VERSION"
+          test "$(nix eval --impure --raw --expr builtins.currentSystem)" = "$NIX_PLATFORM"
+          test "$NIX_REMOTE" = local
+          test -f "$NIX_SSL_CERT_FILE"
+          nix-store --verify --check-contents
+          test "$(nix eval --raw --expr 'builtins.toString 42')" = 42
+      - name: Build an offline derivation
+        run: |
+          result="$(nix-build --no-out-link --option substituters '' --expr '
+            derivation {
+              name = "nix-install-smoke";
+              system = builtins.currentSystem;
+              builder = "/bin/sh";
+              args = [ "-c" "echo verified > $out" ];
+            }')"
+          test "$(cat "$result")" = verified
+      - name: Write test summary
+        run: |
+          printf 'Nix %s on %s: installation, environment, store verification, evaluation and offline build passed.\n' \
+            "$NIX_VERSION" "$NIX_PLATFORM" >> "$GITHUB_STEP_SUMMARY"
+  quick_install:
+    name: Install and test Nix with nixbuild (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            platform: aarch64-linux
+    defaults:
+      run:
+        shell: bash
+    env:
+      NIX_VERSION: ${{ inputs.nix_version }}
+      NIX_PLATFORM: ${{ matrix.platform }}
+      # Upstream uses the local store by default but does not export NIX_REMOTE.
+      NIX_REMOTE: local
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Nix using nixbuild's action
+        uses: nixbuild/nix-quick-install-action@9f63be77f412a248c9d9a65a4c82cf066cdf8f0c # v35
+        with:
+          nix_version: ${{ inputs.nix_version }}
+          enable_kvm: false
+          nix_conf: |
+            build-users-group =
+            sandbox = false
+      - name: Verify Nix in a subsequent step
+        run: |
+          command -v nix
+          nix --version
+          test "$(nix eval --raw --expr builtins.nixVersion)" = "$NIX_VERSION"
+          test "$(nix eval --impure --raw --expr builtins.currentSystem)" = "$NIX_PLATFORM"
+          test "$NIX_REMOTE" = local
+          test -f "$NIX_SSL_CERT_FILE"
+          nix-store --verify --check-contents
+          test "$(nix eval --raw --expr 'builtins.toString 42')" = 42
+      - name: Build an offline derivation
+        run: |
+          result="$(nix-build --no-out-link --option substituters '' --expr '
+            derivation {
+              name = "nix-install-smoke";
+              system = builtins.currentSystem;
+              builder = "/bin/sh";
+              args = [ "-c" "echo verified > $out" ];
+            }')"
+          test "$(cat "$result")" = verified
+      - name: Write test summary
+        run: |
+          printf 'Nix %s on %s: installation, environment, store verification, evaluation and offline build passed.\n' \
+            "$NIX_VERSION" "$NIX_PLATFORM" >> "$GITHUB_STEP_SUMMARY"
