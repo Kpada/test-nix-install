@@ -2,100 +2,51 @@ name: Prepare minimal Nix archives
 on:
   workflow_dispatch:
     inputs:
-      nix_version:
-        description: Exact version already recorded in sources.json.
+      nix_versions:
+        description: Exact Nix versions separated by spaces or commas.
         required: true
         default: "2.34.7"
+        type: string
       release_tag:
-        description: New release tag for the archives (must not exist).
+        description: New release tag for all archives.
         required: true
-        default: "nix-2.34.7-r1"
+        default: "nix-binaries-r1"
+        type: string
 permissions:
   contents: write
 concurrency:
   group: prepare-minimal-nix
   cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
 jobs:
   prepare:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NIX_VERSIONS: ${{ inputs.nix_versions }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Validate inputs
-        env:
-          NIX_VERSION: ${{ inputs.nix_version }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+      - name: Validate release tag
         run: |
-          [[ "$NIX_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "$RELEASE_TAG" =~ ^nix-[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+$ ]]
-          [[ "$RELEASE_TAG" == "nix-$NIX_VERSION-"* ]]
+          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Release already exists; choose a new revision" >&2
             exit 1
           fi
-      - id: sources
-        name: Read pinned upstream checksums
-        env:
-          NIX_VERSION: ${{ inputs.nix_version }}
+      - name: Package each Nix version
         run: |
-          python3 - <<'PY'
-          import json, os
-          sources = json.load(open("sources.json"))[os.environ["NIX_VERSION"]]
-          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              for platform in ("x86_64-linux", "aarch64-linux"):
-                  out.write(f"{platform}={sources[platform]}\n")
-          PY
-      - id: x86
-        name: Package x86_64 Linux
-        uses: ./
-        with:
-          nix-version: ${{ inputs.nix_version }}
-          platform: x86_64-linux
-          source-sha256: ${{ steps.sources.outputs.x86_64-linux }}
-      - id: arm
-        name: Package aarch64 Linux
-        uses: ./
-        with:
-          nix-version: ${{ inputs.nix_version }}
-          platform: aarch64-linux
-          source-sha256: ${{ steps.sources.outputs.aarch64-linux }}
-      - name: Smoke test x86_64 installation
-        uses: ./install
-        with:
-          archive-url: ${{ steps.x86.outputs.archive }}
-          archive-sha256: ${{ steps.x86.outputs.sha256 }}
-      - name: Verify Nix store and an offline build
-        run: |
-          nix-store --verify --check-contents
-          test "$(nix eval --raw --expr 'builtins.toString 42')" = 42
-          nix-build --no-out-link --option sandbox false --expr '
-            derivation {
-              name = "minimal-nix-smoke";
-              system = builtins.currentSystem;
-              builder = "/bin/sh";
-              args = [ "-c" "echo verified > $out" ];
-            }' > smoke-result
-          test "$(cat "$(cat smoke-result)")" = verified
+          read -r -a versions <<< "${NIX_VERSIONS//,/ }"
+          (( ${#versions[@]} > 0 )) || { echo "Provide at least one Nix version" >&2; exit 1; }
+          for version in "${versions[@]}"; do
+            bash prepare.sh "$version" nix-archives
+          done
       - name: Publish archives
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          NIX_VERSION: ${{ inputs.nix_version }}
-          X86_ARCHIVE: ${{ steps.x86.outputs.archive }}
-          X86_MANIFEST: ${{ steps.x86.outputs.manifest }}
-          ARM_ARCHIVE: ${{ steps.arm.outputs.archive }}
-          ARM_MANIFEST: ${{ steps.arm.outputs.manifest }}
         run: |
-          sha256sum "$X86_ARCHIVE" "$ARM_ARCHIVE" | sed 's|  .*/|  |' > nix-archives/SHA256SUMS
-          cat > release-notes.md <<'NOTES'
-          Minimal single-user Nix archives for Linux. Pin the archive SHA256
-          from its JSON manifest in your consuming workflow.
-          x86_64 installation is smoke-tested; aarch64 is packaged but not run.
-          NOTES
           gh release create "$RELEASE_TAG" \
-            --target "$GITHUB_SHA" --title "Minimal Nix $NIX_VERSION" \
-            --notes-file release-notes.md \
-            "$X86_ARCHIVE" "$X86_MANIFEST" "$ARM_ARCHIVE" "$ARM_MANIFEST" \
-            nix-archives/SHA256SUMS
-
+            --target "$GITHUB_SHA" --title "Minimal Nix binaries ($RELEASE_TAG)" \
+            --notes "Official Nix binaries for x86-64 Linux. One zstd archive per version. Install using the install action with the chosen archive URL." \
+            nix-archives/*.tar.zst

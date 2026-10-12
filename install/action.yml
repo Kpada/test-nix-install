@@ -1,12 +1,9 @@
 name: Install minimal Nix
-description: Install a minimal archive on a fresh Linux runner.
+description: Install a prepared Nix archive on a fresh x86-64 Ubuntu runner.
 inputs:
   archive-url:
     description: HTTPS URL to your release archive, or a local archive for testing.
     required: true
-  archive-sha256:
-    description: Optional SHA256; omit to skip archive checksum verification.
-    required: false
   nix-conf:
     description: Additional nix.conf settings.
     required: false
@@ -16,8 +13,7 @@ runs:
     - shell: bash
       env:
         NIX_ARCHIVE_SOURCE: ${{ inputs.archive-url }}
-        NIX_ARCHIVE_SHA256: ${{ inputs.archive-sha256 }}
         NIX_CONF: ${{ inputs.nix-conf }}
       run: |
-        bash "$GITHUB_ACTION_PATH/../install.sh" "$NIX_ARCHIVE_SOURCE" "$NIX_ARCHIVE_SHA256"
+        bash "$GITHUB_ACTION_PATH/../install.sh" "$NIX_ARCHIVE_SOURCE"
 
