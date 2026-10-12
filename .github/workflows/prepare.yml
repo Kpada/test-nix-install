@@ -7,11 +7,6 @@ on:
         required: true
         default: "2.34.7"
         type: string
-      release_tag:
-        description: New release tag for all archives.
-        required: true
-        default: "nix-binaries-r1"
-        type: string
 permissions:
   contents: write
 concurrency:
@@ -26,17 +21,22 @@ jobs:
     timeout-minutes: 15
     env:
       NIX_VERSIONS: ${{ inputs.nix_versions }}
-      RELEASE_TAG: ${{ inputs.release_tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Validate release tag
         run: |
-          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release already exists; choose a new revision" >&2
+          source scripts/archive.sh
+          if gh release view "$NIX_ARCHIVE_RELEASE" >/dev/null 2>&1; then
+            echo "Release already exists; bump NIX_ARCHIVE_RELEASE in scripts/archive.sh" >&2
             exit 1
           fi
+          existing_tag="$(git ls-remote --tags origin "refs/tags/$NIX_ARCHIVE_RELEASE")"
+          if [[ -n "$existing_tag" ]]; then
+            echo "Tag already exists; bump NIX_ARCHIVE_RELEASE in scripts/archive.sh" >&2
+            exit 1
+          fi
+          printf 'NIX_ARCHIVE_RELEASE=%s\n' "$NIX_ARCHIVE_RELEASE" >> "$GITHUB_ENV"
       - name: Package each Nix version
         run: |
           read -r -a versions <<< "${NIX_VERSIONS//,/ }"
@@ -46,7 +46,8 @@ jobs:
           done
       - name: Publish archives
         run: |
-          gh release create "$RELEASE_TAG" \
-            --target "$GITHUB_SHA" --title "Minimal Nix binaries ($RELEASE_TAG)" \
-            --notes "Official Nix binaries for x86-64 Linux. One zstd archive per version. Install using the install action with the chosen archive URL." \
+          gh release create "$NIX_ARCHIVE_RELEASE" \
+            --target "$GITHUB_SHA" --latest=false \
+            --title "Minimal Nix binaries ($NIX_ARCHIVE_RELEASE)" \
+            --notes "Official Nix binaries for x86-64 Linux. One zstd archive per version. Use the matching install action version and its nix-version input." \
             nix-archives/*.tar.zst

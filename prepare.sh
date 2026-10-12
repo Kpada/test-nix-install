@@ -64,28 +64,30 @@ main()
     fi
     local version="$1"
     local output_dir="${2:-nix-archives}"
-    local command script_dir archive
+    local command script_dir archive archive_name
 
-    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Expected an exact release version"
+    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    source "$script_dir/scripts/archive.sh"
+    archive_name="$(nix_archive_name "$version")"
     for command in curl tar xz zstd python3; do
         command -v "$command" >/dev/null || fail "Missing command: $command"
     done
 
     mkdir -p "$output_dir"
     output_dir="$(cd "$output_dir" && pwd)"
-    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
     work_dir="$(mktemp -d)"
     trap cleanup EXIT
 
     download_source "$version" "$work_dir"
     python3 "$script_dir/scripts/minimal_closure.py" \
         "$work_dir/unpack/nix-$version-x86_64-linux" "$work_dir/root" "$version"
-    archive="$output_dir/nix-$version-x86_64-linux.tar.zst"
+    archive="$output_dir/$archive_name"
     pack_archive "$work_dir/root" "$archive"
 
     printf 'Archive: %s\n' "$archive"
     if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-        printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+        printf 'archive=%s\narchive-name=%s\nrelease-tag=%s\n' \
+            "$archive" "$archive_name" "$NIX_ARCHIVE_RELEASE" >> "$GITHUB_OUTPUT"
     fi
 }
 

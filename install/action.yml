@@ -1,8 +1,8 @@
 name: Install minimal Nix
 description: Install a prepared Nix archive on a fresh x86-64 Ubuntu runner.
 inputs:
-  archive-url:
-    description: HTTPS URL to your release archive, or a local archive for testing.
+  nix-version:
+    description: Exact Nix version included in the pinned archive release (X.Y.Z).
     required: true
   nix-conf:
     description: Additional nix.conf settings.
@@ -12,8 +12,13 @@ runs:
   steps:
     - shell: bash
       env:
-        NIX_ARCHIVE_SOURCE: ${{ inputs.archive-url }}
+        NIX_VERSION: ${{ inputs.nix-version }}
+        NIX_ARCHIVE_REPOSITORY: ${{ github.action_repository || github.repository }}
+        NIX_ARCHIVE_SERVER: ${{ github.server_url }}
         NIX_CONF: ${{ inputs.nix-conf }}
       run: |
-        bash "$GITHUB_ACTION_PATH/../install.sh" "$NIX_ARCHIVE_SOURCE"
+        source "$GITHUB_ACTION_PATH/../scripts/archive.sh"
+        archive_name="$(nix_archive_name "$NIX_VERSION")"
+        archive_url="$NIX_ARCHIVE_SERVER/$NIX_ARCHIVE_REPOSITORY/releases/download/$NIX_ARCHIVE_RELEASE/$archive_name"
+        bash "$GITHUB_ACTION_PATH/../install.sh" "$archive_url"
 

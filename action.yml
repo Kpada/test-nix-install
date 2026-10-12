@@ -11,6 +11,12 @@ outputs:
   archive:
     description: Absolute path to the tar.zst.
     value: ${{ steps.pack.outputs.archive }}
+  archive-name:
+    description: Release asset name expected by the installer for this Nix version.
+    value: ${{ steps.pack.outputs.archive-name }}
+  release-tag:
+    description: Archive release tag pinned by this version of the actions.
+    value: ${{ steps.pack.outputs.release-tag }}
 runs:
   using: composite
   steps:

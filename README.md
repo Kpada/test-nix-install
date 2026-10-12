@@ -7,6 +7,7 @@ No daemon, channels or NIX_PATH setup. `nix-command` and flakes are enabled.
 
 - Root action and `prepare.sh`: prepare the archive once.
 - `install/action.yml` and `install.sh`: install the prepared archive.
+- `scripts/archive.sh`: shared asset names and the pinned archive release tag.
 - `scripts/minimal_closure.py`: keep Nix and its runtime dependencies.
 - `scripts/smoke-test.sh`: verify the installation and an offline build.
 
@@ -32,10 +33,10 @@ on network and runner performance.
 Run **Prepare minimal Nix archives** in Actions:
 
 - `nix_versions`: `2.34.7 2.33.6` (spaces or commas; one version also works)
-- `release_tag`: `nix-binaries-r1` (any new tag, independent of Nix versions)
 
-The workflow packages every requested version and publishes all archives in a
-single release. Each version has one asset, for example:
+The workflow uses the release tag pinned in `scripts/archive.sh`, currently
+`nix-install-archives-v1`. It packages every requested version and publishes all
+archives in that release. Each version has one asset, for example:
 
 ```text
 nix-2.34.7-x86_64-linux.tar.zst
@@ -44,13 +45,23 @@ nix-2.33.6-x86_64-linux.tar.zst
 
 Only x86-64 Linux binaries are packaged. No manifests or checksum files are
 generated. Publication happens after all versions have been packaged successfully.
-Use a new tag if the release already exists. Keep the archives public so consumer
-jobs can download them directly.
+Existing releases and tags are rejected. Archive tags use the
+`nix-install-archives-vN` prefix, and publication uses `--latest=false` so other
+actions in the repository can have their own releases and Latest designation.
+Keep the archives public so consumer jobs can download them directly.
+
+For a new archive release, bump `NIX_ARCHIVE_RELEASE` in `scripts/archive.sh`,
+publish all supported Nix versions with this workflow, then publish a new installer
+version or pin its commit. Installer tags can use a separate `nix-install-vN`
+prefix. Each installer version stays tied to its archive release.
+
+The packaging action returns `archive` (absolute path), `archive-name` (asset
+name), and `release-tag`. Packaging and installation share the same naming rule.
 
 ## Use in another repository
 
-Replace `FULL_COMMIT_SHA` with a commit containing the installer, and choose
-the release tag and version in the archive URL:
+Replace `FULL_COMMIT_SHA` with a commit whose pinned archive release has been
+published. Choose only the Nix version:
 
 ```yaml
 jobs:
@@ -59,9 +70,13 @@ jobs:
     steps:
       - uses: Kpada/test-nix-install/install@FULL_COMMIT_SHA
         with:
-          archive-url: https://github.com/Kpada/test-nix-install/releases/download/nix-binaries-r1/nix-2.34.7-x86_64-linux.tar.zst
+          nix-version: "2.34.7"
       - run: nix --version
 ```
+
+The installer constructs the download URL from its own repository, the pinned
+release tag, and the version's asset name. It makes no API requests to search
+releases. The requested version must be included in that pinned release.
 
 The installer requires an absent or empty, writable `/nix`. PATH and Nix
 environment variables persist to subsequent Actions steps. Add settings with
@@ -73,9 +88,9 @@ environment variables persist to subsequent Actions steps. Add settings with
 with nixbuild v35 on separate Ubuntu x86-64 runners, using the same Nix version
 and smoke test. Both download existing archives; packaging is outside the test.
 
-Defaults are Nix `2.34.7` and release `nix-2.34.7-r1`. Manual inputs select another
-version and release; use `nix-binaries-r1` to compare an archive from the example
-release above. Download and installation time appears in milliseconds in
+The default is Nix `2.34.7`; the manual input selects another version included in
+the pinned archive release. Publish that release before running the comparison.
+Download and installation time appears in milliseconds in
 the logs and Actions summary. The timer includes transitions between Actions
 steps; checkout and smoke tests are outside the measurement.
 
