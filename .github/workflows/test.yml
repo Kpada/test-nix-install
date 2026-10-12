@@ -61,7 +61,6 @@ jobs:
             ${{ github.server_url }}/${{ github.repository
             }}/releases/download/${{ inputs.release_tag }}/nix-${{
             inputs.nix_version }}-${{ matrix.platform }}.tar.zst
-          archive-sha256: ${{ steps.archive.outputs.sha256 }}
           nix-conf: |
             sandbox = false
       - name: Verify Nix in a subsequent step

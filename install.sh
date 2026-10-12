@@ -2,15 +2,18 @@
 set -euo pipefail
 umask 022
 
-# Usage: install.sh HTTPS_URL_OR_LOCAL_ARCHIVE PINNED_SHA256
+# Usage: install.sh HTTPS_URL_OR_LOCAL_ARCHIVE [PINNED_SHA256]
 # Intended for a fresh Linux GitHub-hosted runner.
-if (( $# != 2 )); then
-  echo "Usage: $0 HTTPS_URL_OR_LOCAL_ARCHIVE PINNED_SHA256" >&2
+if (( $# < 1 || $# > 2 )); then
+  echo "Usage: $0 HTTPS_URL_OR_LOCAL_ARCHIVE [PINNED_SHA256]" >&2
   exit 2
 fi
 source_archive="$1"
-expected_sha="${2,,}"
-[[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "Expected a pinned SHA256" >&2; exit 2; }
+expected_sha="${2:-}"
+if [[ -n "$expected_sha" ]]; then
+  expected_sha="${expected_sha,,}"
+  [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "Expected a pinned SHA256" >&2; exit 2; }
+fi
 [[ "$(uname -s)" == Linux ]] || { echo "Only Linux runners are supported" >&2; exit 1; }
 case "$(uname -m)" in
   x86_64) platform=x86_64-linux ;;
@@ -42,9 +45,10 @@ case "$source_archive" in
   *://*) echo "Expected an HTTPS URL or a local file" >&2; exit 2 ;;
   *) cp -- "$source_archive" "$archive" ;;
 esac
-printf '%s  %s\n' "$expected_sha" "$archive" | sha256sum --check --status
+if [[ -n "$expected_sha" ]]; then
+  printf '%s  %s\n' "$expected_sha" "$archive" | sha256sum --check --status
+fi
 
-# All system changes happen after checksum verification.
 if [[ ! -d /nix ]]; then
   if (( EUID == 0 )); then
     install -d -m 0755 /nix
