@@ -36,26 +36,31 @@ jobs:
     steps:
       - name: Check out the action under test
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Read checksum from the prepared release
-        id: archive
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          archive="nix-$NIX_VERSION-$NIX_PLATFORM.tar.zst"
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "$archive.json" --output "$RUNNER_TEMP/nix-archive.json"
-          python3 - <<'PY'
-          import json, os
-          with open(os.path.join(os.environ["RUNNER_TEMP"], "nix-archive.json")) as manifest_file:
-              manifest = json.load(manifest_file)
-          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"sha256={manifest['sha256']}\n")
-          PY
+      # - name: Read checksum from the prepared release
+      #   id: archive
+      #   env:
+      #     GH_TOKEN: ${{ github.token }}
+      #     RELEASE_TAG: ${{ inputs.release_tag }}
+      #   run: |
+      #     archive="nix-$NIX_VERSION-$NIX_PLATFORM.tar.zst"
+      #     gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+      #       --pattern "$archive.json" --output "$RUNNER_TEMP/nix-archive.json"
+      #     python3 - <<'PY'
+      #     import json, os
+      #     with open(os.path.join(os.environ["RUNNER_TEMP"], "nix-archive.json")) as manifest_file:
+      #         manifest = json.load(manifest_file)
+      #     with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+      #         out.write(f"sha256={manifest['sha256']}\n")
+      #     PY
       - name: Install Nix using our action
         uses: ./install
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          archive-url: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ inputs.release_tag }}/nix-${{ inputs.nix_version }}-${{ matrix.platform }}.tar.zst
+          archive-url:
+            ${{ github.server_url }}/${{ github.repository
+            }}/releases/download/${{ inputs.release_tag }}/nix-${{
+            inputs.nix_version }}-${{ matrix.platform }}.tar.zst
           archive-sha256: ${{ steps.archive.outputs.sha256 }}
           nix-conf: |
             sandbox = false

@@ -31,8 +31,13 @@ trap 'rm -rf -- "$work"' EXIT
 archive="$work/nix.tar.zst"
 case "$source_archive" in
   https://*)
-    curl --fail --location --retry 3 --connect-timeout 20 \
-      "$source_archive" --output "$archive"
+    if [[ -n "${GH_TOKEN:-}" && "$source_archive" =~ ^https://github\.com/([^/]+/[^/]+)/releases/download/([^/]+)/([^/]+)$ ]]; then
+      gh release download "${BASH_REMATCH[2]}" --repo "${BASH_REMATCH[1]}" \
+        --pattern "${BASH_REMATCH[3]}" --output "$archive"
+    else
+      curl --fail --location --retry 3 --connect-timeout 20 \
+        "$source_archive" --output "$archive"
+    fi
     ;;
   *://*) echo "Expected an HTTPS URL or a local file" >&2; exit 2 ;;
   *) cp -- "$source_archive" "$archive" ;;
