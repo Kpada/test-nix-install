@@ -1,0 +1,40 @@
+name: Package minimal Nix
+description: Repack a checksum-pinned official Nix release as a minimal zstd archive.
+inputs:
+  nix-version:
+    description: Exact Nix release version.
+    required: true
+  platform:
+    description: x86_64-linux or aarch64-linux.
+    required: true
+  source-sha256:
+    description: Pinned SHA256 of the official tar.xz; never discovered at runtime.
+    required: true
+  output-directory:
+    description: Destination for the archive and manifest.
+    default: nix-archives
+outputs:
+  archive:
+    description: Absolute path to the tar.zst.
+    value: ${{ steps.pack.outputs.archive }}
+  sha256:
+    description: SHA256 of the tar.zst.
+    value: ${{ steps.pack.outputs.sha256 }}
+  manifest:
+    description: Absolute path to the JSON manifest.
+    value: ${{ steps.pack.outputs.manifest }}
+runs:
+  using: composite
+  steps:
+    - id: pack
+      shell: bash
+      env:
+        NIX_PACKAGE_VERSION: ${{ inputs.nix-version }}
+        NIX_PACKAGE_PLATFORM: ${{ inputs.platform }}
+        NIX_PACKAGE_SHA256: ${{ inputs.source-sha256 }}
+        NIX_PACKAGE_OUTPUT: ${{ inputs.output-directory }}
+      run: |
+        bash "$GITHUB_ACTION_PATH/prepare.sh" \
+          "$NIX_PACKAGE_VERSION" "$NIX_PACKAGE_PLATFORM" \
+          "$NIX_PACKAGE_SHA256" "$NIX_PACKAGE_OUTPUT"
+

@@ -1,0 +1,23 @@
+name: Install minimal Nix
+description: Install a checksum-pinned minimal archive on a fresh Linux runner.
+inputs:
+  archive-url:
+    description: HTTPS URL to your release archive, or a local archive for testing.
+    required: true
+  archive-sha256:
+    description: SHA256 pinned in the calling workflow or action commit.
+    required: true
+  nix-conf:
+    description: Additional nix.conf settings.
+    required: false
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        NIX_ARCHIVE_SOURCE: ${{ inputs.archive-url }}
+        NIX_ARCHIVE_SHA256: ${{ inputs.archive-sha256 }}
+        NIX_CONF: ${{ inputs.nix-conf }}
+      run: |
+        bash "$GITHUB_ACTION_PATH/../install.sh" "$NIX_ARCHIVE_SOURCE" "$NIX_ARCHIVE_SHA256"
+

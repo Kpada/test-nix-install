@@ -1,0 +1,5 @@
+nix-archives/
+__pycache__/
+smoke-result
+release-notes.md
+
